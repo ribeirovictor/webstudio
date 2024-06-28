@@ -12,13 +12,20 @@ import {
   $registeredComponentMetas,
   $selectedInstanceSelector,
   $selectedPage,
+  $project,
 } from "../../nano-states";
-import { isFeatureEnabled } from "@webstudio-is/feature-flags";
-import { WfData, WfNode, WfStyle, wfNodeTypes } from "./schema";
+import {
+  WfData,
+  wfNodeTypes,
+  type WfNode,
+  type WfStyle,
+  type WfAsset,
+} from "./schema";
 import { addInstanceAndProperties } from "./instances-properties";
 import { addStyles } from "./styles";
 import { builderApi } from "~/shared/builder-api";
 import { denormalizeSrcProps } from "../asset-upload";
+import { nanoHash } from "~/shared/nano-hash";
 
 const { toast } = builderApi;
 
@@ -47,12 +54,38 @@ const toWebstudioFragment = async (wfData: WfData) => {
   const wfStyles = new Map<WfStyle["_id"], WfStyle>(
     wfData.payload.styles.map((style: WfStyle) => [style._id, style])
   );
+
+  const wfAssets = new Map<WfAsset["_id"], WfAsset>(
+    wfData.payload.assets.map((asset: WfAsset) => [asset._id, asset])
+  );
+
   // False value used to skip a node.
   const doneNodes = new Map<WfNode["_id"], Instance["id"] | false>();
   for (const wfNode of wfNodes.values()) {
     addInstanceAndProperties(wfNode, doneNodes, wfNodes, fragment);
   }
-  await addStyles(wfNodes, wfStyles, doneNodes, fragment);
+
+  /**
+   * Generates deterministic style IDs based on sourceId or unique data.
+   * This simplifies merging and deduplicating styles from different sources.
+   */
+  const generateStyleSourceId = async (sourceData: string) => {
+    // We are using projectId here to avoid id collisions between different projects.
+    const projectId = $project.get()?.id;
+    if (projectId === undefined) {
+      throw new Error("Project id is not set");
+    }
+    return nanoHash(`${projectId}-${sourceData}`);
+  };
+
+  await addStyles(
+    wfNodes,
+    wfStyles,
+    wfAssets,
+    doneNodes,
+    fragment,
+    generateStyleSourceId
+  );
   // First node should be always the root node in theory, if not
   // we need to find a node that is not a child of any other node.
   const rootWfNode = wfData.payload.nodes[0];
@@ -112,13 +145,11 @@ const parse = (clipboardData: string) => {
 };
 
 export const onPaste = async (clipboardData: string) => {
-  if (isFeatureEnabled("pasteFromWebflow") === false) {
-    return false;
-  }
   const wfData = parse(clipboardData);
   if (wfData === undefined) {
     return false;
   }
+
   let fragment = await toWebstudioFragment(wfData);
   const selectedPage = $selectedPage.get();
   if (fragment === undefined || selectedPage === undefined) {

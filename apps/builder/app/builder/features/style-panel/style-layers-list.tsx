@@ -41,6 +41,10 @@ type LayerListProps = SectionProps & {
   label: string;
   property: StyleProperty;
   value: TupleValue | LayersValue;
+  deleteProperty: DeleteProperty;
+  deleteLayer?: (index: number) => boolean | void;
+  swapLayers?: (oldIndex: number, newIndex: number) => void;
+  hideLayer?: (index: number) => void;
   renderContent: (props: {
     index: number;
     layer: TupleValue | FunctionValue;
@@ -85,20 +89,27 @@ const extractPropertiesFromLayer = (layer: TupleValue | FunctionValue) => {
       }
       shadow.push(item.value);
     }
+
+    if (item.type === "function") {
+      const value = `${item.name}(${toValue(item.args)})`;
+      name.push(value);
+      shadow.push(value);
+    }
   }
 
   return { name: name.join(" "), value: shadow.join(" "), color };
 };
 
-export const LayersList = ({
-  label,
-  property,
-  value,
-  currentStyle,
-  createBatchUpdate,
-  renderContent,
-  deleteProperty,
-}: LayerListProps) => {
+export const LayersList = (props: LayerListProps) => {
+  const {
+    label,
+    property,
+    value,
+    currentStyle,
+    createBatchUpdate,
+    renderContent,
+    deleteProperty,
+  } = props;
   const layersCount = getLayerCount(property, currentStyle);
 
   const sortableItems = useMemo(
@@ -112,17 +123,28 @@ export const LayersList = ({
 
   const { dragItemId, placementIndicator, sortableRefCallback } = useSortable({
     items: sortableItems,
-    onSort: (newIndex, oldIndex) => {
-      swapLayers(property, newIndex, oldIndex, currentStyle, createBatchUpdate);
-    },
+    onSort: (newIndex, oldIndex) =>
+      props.swapLayers
+        ? props.swapLayers(oldIndex, newIndex)
+        : swapLayers(
+            property,
+            newIndex,
+            oldIndex,
+            currentStyle,
+            createBatchUpdate
+          ),
   });
 
   const handleDeleteLayer = (index: number) => {
-    return deleteLayer(property, index, value, createBatchUpdate);
+    return props?.deleteLayer
+      ? props.deleteLayer(index)
+      : deleteLayer(property, index, value, createBatchUpdate);
   };
 
   const handleHideLayer = (index: number) => {
-    return hideLayer(property, index, value, createBatchUpdate);
+    return props?.hideLayer
+      ? props.hideLayer(index)
+      : hideLayer(property, index, value, createBatchUpdate);
   };
 
   const onEditLayer = (

@@ -11,8 +11,8 @@ import {
   collapsedAttribute,
   idAttribute,
   addGlobalRules,
+  addPresetRules,
   createImageValueTransformer,
-  getPresetStyleRules,
   descendantComponent,
   type Params,
 } from "@webstudio-is/react-sdk";
@@ -223,6 +223,10 @@ export const subscribeStyles = () => {
     renderUserSheetInTheNextFrame();
   });
 
+  const unsubscribeTransformValue = $transformValue.subscribe(() => {
+    renderUserSheetInTheNextFrame();
+  });
+
   // add/delete declarations in mixins
   let prevStylesSet = new Set<StyleDecl>();
   const unsubscribeStyles = $styles.subscribe((styles) => {
@@ -292,6 +296,7 @@ export const subscribeStyles = () => {
     unsubscribeStyles();
     unsubscribeStyleSourceSelections();
     unsubscribeDescendantSelectors();
+    unsubscribeTransformValue();
     if (animationFrameId) {
       cancelAnimationFrame(animationFrameId);
     }
@@ -319,16 +324,7 @@ export const GlobalStyles = ({ params }: { params: Params }) => {
 
   useLayoutEffect(() => {
     presetSheet.clear();
-    for (const [component, meta] of metas) {
-      const presetStyle = meta.presetStyle;
-      if (presetStyle === undefined) {
-        continue;
-      }
-      const rules = getPresetStyleRules(component, presetStyle);
-      for (const [selector, style] of rules) {
-        presetSheet.addStyleRule({ style }, selector);
-      }
-    }
+    addPresetRules(presetSheet, metas);
     presetSheet.render();
   }, [metas]);
 

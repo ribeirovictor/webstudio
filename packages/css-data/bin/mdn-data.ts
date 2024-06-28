@@ -5,6 +5,7 @@ import { join, dirname } from "node:path";
 import { parse, definitionSyntax, type DSNode, type CssNode } from "css-tree";
 import properties from "mdn-data/css/properties.json";
 import syntaxes from "mdn-data/css/syntaxes.json";
+import selectors from "mdn-data/css/selectors.json";
 import data from "css-tree/dist/data";
 import { camelCase } from "change-case";
 import type {
@@ -15,6 +16,18 @@ import type {
   UnparsedValue,
 } from "@webstudio-is/css-engine";
 import * as customData from "../src/custom-data";
+
+/**
+ * Store prefixed properties without change
+ * and convert to camel case only unprefixed properties
+ * @todo stop converting to camel case and use hyphenated format
+ */
+const normalizePropertyName = (property: string) => {
+  if (property.startsWith("-")) {
+    return property;
+  }
+  return camelCase(property);
+};
 
 const units: Record<customData.UnitGroup, Array<string>> = {
   number: [],
@@ -227,27 +240,19 @@ type FilteredProperties = { [property in Property]: Value };
 const experimentalProperties = [
   "appearance",
   "aspect-ratio",
-  // not standard and not implemented without prefix
-  // @todo get rid once the issue with types in radix sdk is resolved
-  "line-clamp",
-  // used in normalize
   "text-size-adjust",
+  "-webkit-line-clamp",
 ];
 
 const unsupportedProperties = [
-  "-webkit-line-clamp",
   "--*",
   // shorthand properties
   "all",
   "font-synthesis",
   "font-variant",
   "overflow",
-  // @todo for now webstudio supports only white-space
-  // need to figure out how to make it future proof
-  "white-space-collapse",
+  "white-space",
   "text-wrap",
-  "text-wrap-mode",
-  "text-wrap-style",
 ];
 
 const animatableProperties: string[] = [];
@@ -255,35 +260,8 @@ const filteredProperties: FilteredProperties = (() => {
   let property: Property;
   const result = {} as FilteredProperties;
 
-  /*
-    A transition is a shorthand property that represents the combination of the other four properties.
-    Typically, we exclude shorthand properties when using the expanded ones.
-    However, in this case, the transition property in the designs allows users to set all transition values at once.
-    Therefore, we need to make this property available from the generated list.
-
-    The initial properties for transition is
-    config.initial = [
-      'transition-delay',
-      'transition-duration',
-      'transition-property',
-      'transition-timing-function'
-    ]
-
-    We replace it with the defaults of the rest of the four properties
-    "all 0s ease 0s"
-  */
-
-  const supportedComplexProperties: Record<string, string> = {
-    // @todo remove support for transition shorthand
-    transition: "all 0s ease 0s",
-  };
-
   for (property in properties) {
     const config = properties[property];
-
-    if (property in supportedComplexProperties) {
-      config.initial = supportedComplexProperties[property];
-    }
 
     const isSupportedProperty =
       // make sure the property standard and described in mdn
@@ -308,7 +286,9 @@ const filteredProperties: FilteredProperties = (() => {
   return result;
 })();
 
-const propertiesData = { ...customData.propertiesData };
+const propertiesData = {
+  ...customData.propertiesData,
+};
 
 let property: Property;
 for (property in filteredProperties) {
@@ -344,13 +324,19 @@ for (property in filteredProperties) {
     );
   }
 
-  propertiesData[camelCase(property)] = {
+  propertiesData[normalizePropertyName(property)] = {
     unitGroups: Array.from(unitGroups),
     inherited: config.inherited,
     initial: parseInitialValue(property, config.initial, unitGroups),
     types: Array.from(types),
   };
 }
+
+const pseudoElements = Object.keys(selectors)
+  .filter((selector) => {
+    return selector.startsWith("::");
+  })
+  .map((selector) => selector.slice(2));
 
 const targetDir = join(process.cwd(), process.argv.slice(2).pop() as string);
 
@@ -403,7 +389,7 @@ const keywordValues = (() => {
     }
 
     if (keywords.size !== 0) {
-      const key = camelCase(property);
+      const key = normalizePropertyName(property);
       result[key] = [...(result[key] ?? []), ...keywords];
     }
   }
@@ -419,6 +405,8 @@ writeToFile(
   "animatableProperties",
   animatableProperties
 );
+
+writeToFile("pseudo-elements.ts", "pseudoElements", pseudoElements);
 
 let types = "";
 

@@ -10,15 +10,19 @@ import {
 } from "@webstudio-is/css-engine";
 import { keywordValues } from "./__generated__/keyword-values";
 import { units } from "./__generated__/units";
-import { parseFilter, parseShadow, parseTransition } from "./property-parsers";
-import { camelCase } from "change-case";
+import {
+  isTransitionLongHandProperty,
+  parseFilter,
+  parseShadow,
+  parseTransitionLonghandProperty,
+} from "./property-parsers";
 
 export const cssTryParseValue = (input: string) => {
   try {
     const ast = csstree.parse(input, { context: "value" });
     return ast;
   } catch {
-    return undefined;
+    return;
   }
 };
 
@@ -29,6 +33,25 @@ export const isValidDeclaration = (
   value: string
 ): boolean => {
   const cssPropertyName = hyphenateProperty(property);
+
+  // these properties have poor support natively and in csstree
+  // though rendered styles are merged as shorthand
+  // so validate artifically
+  if (cssPropertyName === "white-space-collapse") {
+    return keywordValues.whiteSpaceCollapse.includes(
+      value as (typeof keywordValues.whiteSpaceCollapse)[0]
+    );
+  }
+  if (cssPropertyName === "text-wrap-mode") {
+    return keywordValues.textWrapMode.includes(
+      value as (typeof keywordValues.textWrapMode)[0]
+    );
+  }
+  if (cssPropertyName === "text-wrap-style") {
+    return keywordValues.textWrapStyle.includes(
+      value as (typeof keywordValues.textWrapStyle)[0]
+    );
+  }
 
   // @todo remove after csstree fixes
   // - https://github.com/csstree/csstree/issues/246
@@ -88,8 +111,8 @@ export const parseCssValue = (
     return parseShadow(property, input);
   }
 
-  if (property === "transition") {
-    return parseTransition(input);
+  if (isTransitionLongHandProperty(property)) {
+    return parseTransitionLonghandProperty(property, input);
   }
 
   if (
@@ -132,8 +155,7 @@ export const parseCssValue = (
     }
 
     if (first?.type === "Identifier") {
-      const values =
-        keywordValues[camelCase(property) as keyof typeof keywordValues];
+      const values = keywordValues[property as keyof typeof keywordValues];
       if (values === undefined) {
         return {
           type: "invalid",

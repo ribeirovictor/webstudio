@@ -80,12 +80,12 @@ test("expand border edges", () => {
   // omit values
   expect(expandShorthands([["border-top", "1px"]])).toEqual([
     ["border-top-width", "1px"],
-    ["border-top-style", "initial"],
-    ["border-top-color", "initial"],
+    ["border-top-style", "none"],
+    ["border-top-color", "currentcolor"],
   ]);
   expect(expandShorthands([["border-top", "red"]])).toEqual([
-    ["border-top-width", "initial"],
-    ["border-top-style", "initial"],
+    ["border-top-width", "medium"],
+    ["border-top-style", "none"],
     ["border-top-color", "red"],
   ]);
 });
@@ -168,6 +168,11 @@ test("expand outline", () => {
     ["outline-width", "1px"],
     ["outline-style", "solid"],
     ["outline-color", "red"],
+  ]);
+  expect(expandShorthands([["outline", "1px solid"]])).toEqual([
+    ["outline-width", "1px"],
+    ["outline-style", "solid"],
+    ["outline-color", "currentcolor"],
   ]);
 });
 
@@ -388,7 +393,7 @@ test("expand font", () => {
     ["font-style", "italic"],
     ["font-variant-caps", "small-caps"],
     ["font-weight", "bold"],
-    ["font-width", "ultra-condensed"],
+    ["font-stretch", "ultra-condensed"],
     ["font-size", "1.2em"],
     ["line-height", "initial"],
     ["font-family", '"Fira Sans",sans-serif'],
@@ -399,7 +404,7 @@ test("expand font", () => {
     ["font-style", "initial"],
     ["font-variant-caps", "initial"],
     ["font-weight", "initial"],
-    ["font-width", "initial"],
+    ["font-stretch", "initial"],
     ["font-size", "1.2em"],
     ["line-height", "2"],
     ["font-family", '"Fira Sans",sans-serif'],
@@ -621,22 +626,22 @@ test("expand animation", () => {
 
 test("expand transition", () => {
   expect(
-    expandShorthands([["transition", `margin-right 4s, color 1s`]])
-  ).toEqual([
-    ["transition-property", "margin-right,color"],
-    ["transition-duration", "4s,1s"],
-    ["transition-timing-function", "ease,ease"],
-    ["transition-delay", "4s,1s"],
-    ["transition-behavior", "normal,normal"],
-  ]);
-  expect(
     expandShorthands([["transition", `margin-right 4s ease-in-out 1s`]])
   ).toEqual([
     ["transition-property", "margin-right"],
     ["transition-duration", "4s"],
     ["transition-timing-function", "ease-in-out"],
-    ["transition-delay", "4s"],
+    ["transition-delay", "1s"],
     ["transition-behavior", "normal"],
+  ]);
+  expect(
+    expandShorthands([["transition", `margin-right 4s, color 1s`]])
+  ).toEqual([
+    ["transition-property", "margin-right,color"],
+    ["transition-duration", "4s,1s"],
+    ["transition-timing-function", "ease,ease"],
+    ["transition-delay", "0s,0s"],
+    ["transition-behavior", "normal,normal"],
   ]);
   expect(
     expandShorthands([["transition", `display 4s allow-discrete`]])
@@ -644,7 +649,7 @@ test("expand transition", () => {
     ["transition-property", "display"],
     ["transition-duration", "4s"],
     ["transition-timing-function", "ease"],
-    ["transition-delay", "4s"],
+    ["transition-delay", "0s"],
     ["transition-behavior", "allow-discrete"],
   ]);
 });
@@ -940,11 +945,113 @@ test("expand grid", () => {
   ]);
 });
 
-test.todo("container");
-test.todo("contain-intrinsic-size");
+test("expand container", () => {
+  expect(expandShorthands([["container", "my-layout"]])).toEqual([
+    ["container-name", "my-layout"],
+    ["container-type", "normal"],
+  ]);
+  expect(expandShorthands([["container", "my-layout / size"]])).toEqual([
+    ["container-name", "my-layout"],
+    ["container-type", "size"],
+  ]);
+});
 
-test.todo("white-space - not a shorthand in webflow");
-test.todo("text-wrap - not a shorthand in webflow");
+test("expand contain-intrinsic-size", () => {
+  expect(expandShorthands([["contain-intrinsic-size", "auto 300px"]])).toEqual([
+    ["contain-intrinsic-width", "auto 300px"],
+    ["contain-intrinsic-height", "auto 300px"],
+  ]);
+  expect(expandShorthands([["contain-intrinsic-size", "1000px"]])).toEqual([
+    ["contain-intrinsic-width", "1000px"],
+    ["contain-intrinsic-height", "1000px"],
+  ]);
+  expect(
+    expandShorthands([["contain-intrinsic-size", "1000px 1.5em"]])
+  ).toEqual([
+    ["contain-intrinsic-width", "1000px"],
+    ["contain-intrinsic-height", "1.5em"],
+  ]);
+  expect(
+    expandShorthands([["contain-intrinsic-size", "auto 300px auto 4rem"]])
+  ).toEqual([
+    ["contain-intrinsic-width", "auto 300px"],
+    ["contain-intrinsic-height", "auto 4rem"],
+  ]);
+});
+
+test("expand white-space", () => {
+  expect(expandShorthands([["white-space", "normal"]])).toEqual([
+    ["white-space-collapse", "collapse"],
+    ["text-wrap-mode", "wrap"],
+  ]);
+  expect(expandShorthands([["white-space", "pre"]])).toEqual([
+    ["white-space-collapse", "preserve"],
+    ["text-wrap-mode", "nowrap"],
+  ]);
+  expect(expandShorthands([["white-space", "pre-wrap"]])).toEqual([
+    ["white-space-collapse", "preserve"],
+    ["text-wrap-mode", "wrap"],
+  ]);
+  expect(expandShorthands([["white-space", "pre-line"]])).toEqual([
+    ["white-space-collapse", "preserve-breaks"],
+    ["text-wrap-mode", "wrap"],
+  ]);
+  // white-space-collapse values
+  expect(expandShorthands([["white-space", "collapse"]])).toEqual([
+    ["white-space-collapse", "collapse"],
+    ["text-wrap-mode", "wrap"],
+  ]);
+  expect(expandShorthands([["white-space", "preserve"]])).toEqual([
+    ["white-space-collapse", "preserve"],
+    ["text-wrap-mode", "wrap"],
+  ]);
+  expect(expandShorthands([["white-space", "preserve-breaks"]])).toEqual([
+    ["white-space-collapse", "preserve-breaks"],
+    ["text-wrap-mode", "wrap"],
+  ]);
+  expect(expandShorthands([["white-space", "preserve-spaces"]])).toEqual([
+    ["white-space-collapse", "preserve-spaces"],
+    ["text-wrap-mode", "wrap"],
+  ]);
+  expect(expandShorthands([["white-space", "break-spaces"]])).toEqual([
+    ["white-space-collapse", "break-spaces"],
+    ["text-wrap-mode", "wrap"],
+  ]);
+  // text-wrap-mode values
+  expect(expandShorthands([["white-space", "wrap"]])).toEqual([
+    ["white-space-collapse", "collapse"],
+    ["text-wrap-mode", "wrap"],
+  ]);
+  expect(expandShorthands([["white-space", "nowrap"]])).toEqual([
+    ["white-space-collapse", "collapse"],
+    ["text-wrap-mode", "nowrap"],
+  ]);
+});
+
+test("expand text-wrap", () => {
+  // text-wrap-mode values
+  expect(expandShorthands([["text-wrap", "wrap"]])).toEqual([
+    ["text-wrap-mode", "wrap"],
+    ["text-wrap-style", "auto"],
+  ]);
+  expect(expandShorthands([["text-wrap", "nowrap"]])).toEqual([
+    ["text-wrap-mode", "nowrap"],
+    ["text-wrap-style", "auto"],
+  ]);
+  // text-wrap-style values
+  expect(expandShorthands([["text-wrap", "balance"]])).toEqual([
+    ["text-wrap-mode", "wrap"],
+    ["text-wrap-style", "balance"],
+  ]);
+  expect(expandShorthands([["text-wrap", "stable"]])).toEqual([
+    ["text-wrap-mode", "wrap"],
+    ["text-wrap-style", "stable"],
+  ]);
+  expect(expandShorthands([["text-wrap", "pretty"]])).toEqual([
+    ["text-wrap-mode", "wrap"],
+    ["text-wrap-style", "pretty"],
+  ]);
+});
 
 test.todo("all - can negatively affect build size");
 test.todo("background - not used in webflow");

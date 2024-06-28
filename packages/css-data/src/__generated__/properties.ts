@@ -18,6 +18,24 @@ export const properties = {
     },
     types: [],
   },
+  "-webkit-box-orient": {
+    unitGroups: [],
+    inherited: false,
+    initial: {
+      type: "keyword",
+      value: "horizontal",
+    },
+    types: [],
+  },
+  "-webkit-line-clamp": {
+    unitGroups: ["number"],
+    inherited: false,
+    initial: {
+      type: "keyword",
+      value: "none",
+    },
+    types: ["integer"],
+  },
   accentColor: {
     unitGroups: [],
     inherited: true,
@@ -1541,15 +1559,6 @@ export const properties = {
     },
     types: [],
   },
-  lineClamp: {
-    unitGroups: ["number"],
-    inherited: false,
-    initial: {
-      type: "keyword",
-      value: "none",
-    },
-    types: ["integer"],
-  },
   lineHeight: {
     unitGroups: ["number", "length", "percentage"],
     inherited: true,
@@ -2819,6 +2828,24 @@ export const properties = {
     },
     types: [],
   },
+  textWrapMode: {
+    unitGroups: [],
+    inherited: true,
+    initial: {
+      type: "keyword",
+      value: "wrap",
+    },
+    types: [],
+  },
+  textWrapStyle: {
+    unitGroups: [],
+    inherited: true,
+    initial: {
+      type: "keyword",
+      value: "auto",
+    },
+    types: [],
+  },
   top: {
     unitGroups: ["length", "percentage"],
     inherited: false,
@@ -2888,34 +2915,6 @@ export const properties = {
       value: "flat",
     },
     types: [],
-  },
-  transition: {
-    unitGroups: ["time"],
-    inherited: false,
-    initial: {
-      type: "tuple",
-      value: [
-        {
-          type: "keyword",
-          value: "all",
-        },
-        {
-          type: "unit",
-          unit: "s",
-          value: 0,
-        },
-        {
-          type: "keyword",
-          value: "ease",
-        },
-        {
-          type: "unit",
-          unit: "s",
-          value: 0,
-        },
-      ],
-    },
-    types: ["custom-ident", "time"],
   },
   transitionDelay: {
     unitGroups: ["time"],
@@ -3000,12 +2999,12 @@ export const properties = {
     },
     types: [],
   },
-  whiteSpace: {
+  whiteSpaceCollapse: {
     unitGroups: [],
     inherited: true,
     initial: {
       type: "keyword",
-      value: "normal",
+      value: "collapse",
     },
     types: [],
   },

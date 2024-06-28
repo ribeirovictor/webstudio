@@ -73,6 +73,24 @@ const joinByOperator = (list: List<CssNode> | CssNode[], operator: string) => {
   return joined;
 };
 
+const parseRepeated = (
+  value: CssNode,
+  parseSingle: (single: CssNode) => Value[]
+): Value[] => {
+  const values: CssNode[][] = [];
+  for (const single of splitByOperator(value, ",")) {
+    if (single === undefined) {
+      continue;
+    }
+    const singleValues = parseSingle(single);
+    singleValues.forEach((singleValue, index) => {
+      values[index] = values[index] ?? [];
+      values[index].push(singleValue);
+    });
+  }
+  return values.map((list) => createValueNode(joinByOperator(list, ",")));
+};
+
 /**
  * Match the list of specified syntaxes with nodes
  * Matches can be placed in different order than the list
@@ -80,41 +98,42 @@ const joinByOperator = (list: List<CssNode> | CssNode[], operator: string) => {
  * Value Definition Syntax use <Type> || <Type> operator for describe this
  */
 const parseUnordered = (syntaxes: string[], value: CssNode) => {
-  const matched = new Map<string, Value>();
-  const unprocessedSyntaxes = new Set(syntaxes);
-  let unprocessedNodes = getValueList(value);
-  let lastCursor = 0;
-  while (unprocessedSyntaxes.size > 0 && unprocessedNodes.length > 0) {
-    let nextCursor = lastCursor;
-    for (const syntax of unprocessedSyntaxes) {
+  const matched = new Map<number, Value>();
+  const nodes = getValueList(value);
+  let cursor = 0;
+  while (matched.size < syntaxes.length && cursor < nodes.length) {
+    let newCursor = cursor;
+    for (let syntaxIndex = 0; syntaxIndex < syntaxes.length; syntaxIndex += 1) {
+      if (matched.has(syntaxIndex)) {
+        continue;
+      }
+      const syntax = syntaxes[syntaxIndex];
       const buffer = [];
       let value: undefined | Value;
-      let cursor = 0;
-      for (const node of unprocessedNodes) {
+      for (let nodeIndex = cursor; nodeIndex < nodes.length; nodeIndex += 1) {
+        const node = nodes[nodeIndex];
         buffer.push(node);
         const newValue = createValueNode(buffer);
         if (lexer.match(syntax, newValue).matched) {
           value = newValue;
-          cursor = buffer.length;
+          newCursor = nodeIndex + 1;
         }
       }
       if (value) {
-        matched.set(syntax, value);
-        unprocessedNodes = unprocessedNodes.slice(cursor);
-        unprocessedSyntaxes.delete(syntax);
-        nextCursor += cursor;
+        matched.set(syntaxIndex, value);
+        break;
       }
     }
     // last pass is the same as previous one
     // which means infinite loop detected
-    if (lastCursor === nextCursor) {
+    if (cursor === newCursor) {
       break;
     }
-    lastCursor = nextCursor;
+    cursor = newCursor;
   }
   return [
-    ...syntaxes.map((syntax) => matched.get(syntax)),
-    createValueNode(unprocessedNodes),
+    ...syntaxes.map((_syntax, index) => matched.get(index)),
+    createValueNode(nodes.slice(cursor)),
   ];
 };
 
@@ -138,15 +157,17 @@ const expandBorder = function* (property: string, value: CssNode) {
     case "border-top":
     case "border-right":
     case "border-bottom":
-    case "border-left":
-    case "outline": {
+    case "border-left": {
       const [width, style, color] = parseUnordered(
         ["<line-width>", "<line-style>", "<color>"],
         value
       );
-      yield [`${property}-width`, width ?? createInitialNode()] as const;
-      yield [`${property}-style`, style ?? createInitialNode()] as const;
-      yield [`${property}-color`, color ?? createInitialNode()] as const;
+      yield [`${property}-width`, width ?? createIdentifier("medium")] as const;
+      yield [`${property}-style`, style ?? createIdentifier("none")] as const;
+      yield [
+        `${property}-color`,
+        color ?? createIdentifier("currentcolor"),
+      ] as const;
       break;
     }
     default:
@@ -284,7 +305,7 @@ const expandBorderImage = function* (value: CssNode) {
 /**
  *
  * font =
- *   [ <'font-style'> || <font-variant-css2> || <'font-weight'> || <font-width-css3> ]?
+ *   [ <'font-style'> || <font-variant-css21> || <'font-weight'> || <'font-stretch'> ]?
  *   <'font-size'> [ / <'line-height'> ]? <'font-family'>
  *
  */
@@ -293,11 +314,9 @@ const expandFont = function* (value: CssNode) {
     parseUnordered(
       [
         "<'font-style'>",
-        // <font-variant-css2> is unsupported by csstree
-        "[ normal | small-caps ]",
+        "<font-variant-css21>",
         "<'font-weight'>",
-        // <font-width-css3> is unsupported by csstree
-        "[ normal | ultra-condensed | extra-condensed | condensed | semi-condensed | semi-expanded | expanded | extra-expanded | ultra-expanded ]",
+        "<'font-stretch'>",
       ],
       value
     );
@@ -323,7 +342,7 @@ const expandFont = function* (value: CssNode) {
   yield ["font-style", fontStyle ?? createInitialNode()] as const;
   yield ["font-variant-caps", fontVariant ?? createInitialNode()] as const;
   yield ["font-weight", fontWeight ?? createInitialNode()] as const;
-  yield ["font-width", fontWidth ?? createInitialNode()] as const;
+  yield ["font-stretch", fontWidth ?? createInitialNode()] as const;
   yield ["font-size", fontSize] as const;
   yield ["line-height", lineHeight] as const;
   yield ["font-family", fontFamily] as const;
@@ -426,21 +445,19 @@ const expandFlex = function* (value: CssNode) {
  *
  */
 const expandAnimation = function* (value: CssNode) {
-  const durations: CssNode[] = [];
-  const timings: CssNode[] = [];
-  const delays: CssNode[] = [];
-  const iterationCounts: CssNode[] = [];
-  const directions: CssNode[] = [];
-  const fillModes: CssNode[] = [];
-  const playStates: CssNode[] = [];
-  const names: CssNode[] = [];
-  for (const animation of splitByOperator(value, ",")) {
-    if (animation === undefined) {
-      continue;
-    }
+  const [
+    duration,
+    timingFunction,
+    delay,
+    iterationCount,
+    direction,
+    fillMode,
+    playState,
+    name,
+  ] = parseRepeated(value, (single) => {
     const [
       duration,
-      timing,
+      easing,
       delay,
       iterationCount,
       direction,
@@ -458,49 +475,27 @@ const expandAnimation = function* (value: CssNode) {
         "<single-animation-play-state>",
         "[ none | <keyframes-name> ]",
       ],
-      animation
+      single
     );
-    durations.push(duration ?? createDimension("0", "s"));
-    timings.push(timing ?? createIdentifier("ease"));
-    delays.push(delay ?? createDimension("0", "s"));
-    iterationCounts.push(iterationCount ?? createNumber("1"));
-    directions.push(direction ?? createIdentifier("normal"));
-    fillModes.push(fillMode ?? createIdentifier("none"));
-    playStates.push(playState ?? createIdentifier("running"));
-    names.push(name ?? createIdentifier("none"));
-  }
-  yield [
-    "animation-duration",
-    createValueNode(joinByOperator(durations, ",")),
-  ] as const;
-  yield [
-    "animation-timing-function",
-    createValueNode(joinByOperator(timings, ",")),
-  ] as const;
-  yield [
-    "animation-delay",
-    createValueNode(joinByOperator(delays, ",")),
-  ] as const;
-  yield [
-    "animation-iteration-count",
-    createValueNode(joinByOperator(iterationCounts, ",")),
-  ] as const;
-  yield [
-    "animation-direction",
-    createValueNode(joinByOperator(directions, ",")),
-  ] as const;
-  yield [
-    "animation-fill-mode",
-    createValueNode(joinByOperator(fillModes, ",")),
-  ] as const;
-  yield [
-    "animation-play-state",
-    createValueNode(joinByOperator(playStates, ",")),
-  ] as const;
-  yield [
-    "animation-name",
-    createValueNode(joinByOperator(names, ",")),
-  ] as const;
+    return [
+      duration ?? createDimension("0", "s"),
+      easing ?? createIdentifier("ease"),
+      delay ?? createDimension("0", "s"),
+      iterationCount ?? createNumber("1"),
+      direction ?? createIdentifier("normal"),
+      fillMode ?? createIdentifier("none"),
+      playState ?? createIdentifier("running"),
+      name ?? createIdentifier("none"),
+    ];
+  });
+  yield ["animation-duration", duration] as const;
+  yield ["animation-timing-function", timingFunction] as const;
+  yield ["animation-delay", delay] as const;
+  yield ["animation-iteration-count", iterationCount] as const;
+  yield ["animation-direction", direction] as const;
+  yield ["animation-fill-mode", fillMode] as const;
+  yield ["animation-play-state", playState] as const;
+  yield ["animation-name", name] as const;
   // reset with animation shorthand but cannot be set with it
   yield ["animation-timeline", createIdentifier("auto")] as const;
   yield ["animation-range-start", createIdentifier("normal")] as const;
@@ -519,52 +514,34 @@ const expandAnimation = function* (value: CssNode) {
  *
  */
 const expandTransition = function* (value: CssNode) {
-  const properties: CssNode[] = [];
-  const durations: CssNode[] = [];
-  const easings: CssNode[] = [];
-  const delays: CssNode[] = [];
-  const behaviors: CssNode[] = [];
-  for (const transition of splitByOperator(value, ",")) {
-    if (transition === undefined) {
-      continue;
+  const [property, duration, timingFunction, delay, behavior] = parseRepeated(
+    value,
+    (single) => {
+      const [property, duration, easing, delay, behavior] = parseUnordered(
+        [
+          "[ none | <single-transition-property> ]",
+          "<time>",
+          "<easing-function>",
+          "<time>",
+          // <transition-behavior-value> is not supported by csstree
+          "normal | allow-discrete",
+        ],
+        single
+      );
+      return [
+        property ?? createIdentifier("all"),
+        duration ?? createDimension("0", "s"),
+        easing ?? createIdentifier("ease"),
+        delay ?? createDimension("0", "s"),
+        behavior ?? createIdentifier("normal"),
+      ];
     }
-    const [property, duration, easing, delay, behavior] = parseUnordered(
-      [
-        "[ none | <single-transition-property> ]",
-        "<time>",
-        "<easing-function>",
-        "<time>",
-        // <transition-behavior-value> is not supported by csstree
-        "normal | allow-discrete",
-      ],
-      transition
-    );
-    properties.push(property ?? createIdentifier("all"));
-    durations.push(duration ?? createDimension("0", "s"));
-    easings.push(easing ?? createIdentifier("ease"));
-    delays.push(delay ?? createDimension("0", "s"));
-    behaviors.push(behavior ?? createIdentifier("normal"));
-  }
-  yield [
-    "transition-property",
-    createValueNode(joinByOperator(properties, ",")),
-  ] as const;
-  yield [
-    "transition-duration",
-    createValueNode(joinByOperator(durations, ",")),
-  ] as const;
-  yield [
-    "transition-timing-function",
-    createValueNode(joinByOperator(easings, ",")),
-  ] as const;
-  yield [
-    "transition-delay",
-    createValueNode(joinByOperator(delays, ",")),
-  ] as const;
-  yield [
-    "transition-behavior",
-    createValueNode(joinByOperator(behaviors, ",")),
-  ] as const;
+  );
+  yield ["transition-property", property] as const;
+  yield ["transition-duration", duration] as const;
+  yield ["transition-timing-function", timingFunction] as const;
+  yield ["transition-delay", delay] as const;
+  yield ["transition-behavior", behavior] as const;
 };
 
 /**
@@ -585,78 +562,56 @@ const expandTransition = function* (value: CssNode) {
  *
  */
 const expandMask = function* (value: CssNode) {
-  const references: CssNode[] = [];
-  const positions: CssNode[] = [];
-  const bgSizes: CssNode[] = [];
-  const repeatStyles: CssNode[] = [];
-  const origins: CssNode[] = [];
-  const clips: CssNode[] = [];
-  const compositionOperators: CssNode[] = [];
-  const modes: CssNode[] = [];
-  for (const mask of splitByOperator(value, ",")) {
-    if (mask === undefined) {
-      continue;
-    }
-    const [
-      reference,
-      positionAndSize,
-      repeatStyle,
-      origin,
-      clip,
-      compositingOperator,
-      mode,
-    ] = parseUnordered(
-      [
-        "<mask-reference>",
-        "<position> [ / <bg-size> ]?",
-        "<repeat-style>",
-        "<geometry-box>",
-        "[ <geometry-box> | no-clip ]",
-        "<compositing-operator>",
-        "<masking-mode>",
-      ],
-      mask
-    );
-    references.push(reference ?? createIdentifier("none"));
-    let position: undefined | CssNode;
-    let bgSize: undefined | CssNode;
-    if (positionAndSize) {
-      [position, bgSize] = splitByOperator(positionAndSize, "/");
-    }
-    positions.push(
-      position ??
-        createValueNode([
-          { type: "Dimension", value: "0", unit: "%" },
-          { type: "Dimension", value: "0", unit: "%" },
-        ])
-    );
-    bgSizes.push(bgSize ?? createIdentifier("auto"));
-    repeatStyles.push(repeatStyle ?? createIdentifier("repeat"));
-    origins.push(origin ?? createIdentifier("border-box"));
-    clips.push(clip ?? origin ?? createIdentifier("border-box"));
-    compositionOperators.push(compositingOperator ?? createIdentifier("add"));
-    modes.push(mode ?? createIdentifier("match-source"));
-  }
-  yield [
-    "mask-image",
-    createValueNode(joinByOperator(references, ",")),
-  ] as const;
-  yield [
-    "mask-position",
-    createValueNode(joinByOperator(positions, ",")),
-  ] as const;
-  yield ["mask-size", createValueNode(joinByOperator(bgSizes, ","))] as const;
-  yield [
-    "mask-repeat",
-    createValueNode(joinByOperator(repeatStyles, ",")),
-  ] as const;
-  yield ["mask-origin", createValueNode(joinByOperator(origins, ","))] as const;
-  yield ["mask-clip", createValueNode(joinByOperator(clips, ","))] as const;
-  yield [
-    "mask-composite",
-    createValueNode(joinByOperator(compositionOperators, ",")),
-  ] as const;
-  yield ["mask-mode", createValueNode(joinByOperator(modes, ","))] as const;
+  const [image, position, size, repeat, origin, clip, composite, mode] =
+    parseRepeated(value, (single) => {
+      const [
+        reference,
+        positionAndSize,
+        repeatStyle,
+        origin,
+        clip,
+        compositingOperator,
+        mode,
+      ] = parseUnordered(
+        [
+          "<mask-reference>",
+          "<position> [ / <bg-size> ]?",
+          "<repeat-style>",
+          "<geometry-box>",
+          "[ <geometry-box> | no-clip ]",
+          "<compositing-operator>",
+          "<masking-mode>",
+        ],
+        single
+      );
+      let position: undefined | Value;
+      let bgSize: undefined | Value;
+      if (positionAndSize) {
+        [position, bgSize] = splitByOperator(positionAndSize, "/");
+      }
+      return [
+        reference ?? createIdentifier("none"),
+        position ??
+          createValueNode([
+            { type: "Dimension", value: "0", unit: "%" },
+            { type: "Dimension", value: "0", unit: "%" },
+          ]),
+        bgSize ?? createIdentifier("auto"),
+        repeatStyle ?? createIdentifier("repeat"),
+        origin ?? createIdentifier("border-box"),
+        clip ?? origin ?? createIdentifier("border-box"),
+        compositingOperator ?? createIdentifier("add"),
+        mode ?? createIdentifier("match-source"),
+      ];
+    });
+  yield ["mask-image", image] as const;
+  yield ["mask-position", position] as const;
+  yield ["mask-size", size] as const;
+  yield ["mask-repeat", repeat] as const;
+  yield ["mask-origin", origin] as const;
+  yield ["mask-clip", clip] as const;
+  yield ["mask-composite", composite] as const;
+  yield ["mask-mode", mode] as const;
 };
 
 /**
@@ -703,15 +658,22 @@ const expandMaskBorder = function* (value: CssNode) {
  */
 const expandOffset = function* (value: CssNode) {
   const [config, anchor] = splitByOperator(value, "/");
-  const [position, path, distance, rotate] = parseUnordered(
+  const [position, config2] = parseUnordered(
     [
       `<'offset-position'>`,
-      `<'offset-path'>`,
-      `<'offset-distance'>`,
-      `<'offset-rotate'>`,
+      `[ <'offset-path'> [ <'offset-distance'> || <'offset-rotate'> ]? ]`,
     ],
     config ?? createIdentifier("none")
   );
+  let path;
+  let distance;
+  let rotate;
+  if (config2) {
+    [path, distance, rotate] = parseUnordered(
+      [`<'offset-path'>`, `<'offset-distance'>`, `<'offset-rotate'>`],
+      config2
+    );
+  }
   yield ["offset-position", position ?? createIdentifier("normal")] as const;
   yield ["offset-path", path ?? createIdentifier("none")] as const;
   yield ["offset-distance", distance ?? createNumber("0")] as const;
@@ -725,24 +687,18 @@ const expandOffset = function* (value: CssNode) {
  *
  */
 const expandScrollTimeline = function* (value: CssNode) {
-  const list = splitByOperator(value, ",");
-  const names: CssNode[] = [];
-  const axises: CssNode[] = [];
-  for (const singleTimeline of list) {
-    const [name, axis] = getValueList(
-      singleTimeline ?? createIdentifier("none")
+  const [name, axis] = parseRepeated(value, (single) => {
+    const [name, axis] = parseUnordered(
+      [`none | <custom-ident>`, `block | inline | x | y`],
+      single
     );
-    names.push(name);
-    axises.push(axis ?? createIdentifier("block"));
-  }
-  yield [
-    "scroll-timeline-name",
-    createValueNode(joinByOperator(names, ",")),
-  ] as const;
-  yield [
-    "scroll-timeline-axis",
-    createValueNode(joinByOperator(axises, ",")),
-  ] as const;
+    return [
+      name ?? createIdentifier("none"),
+      axis ?? createIdentifier("block"),
+    ];
+  });
+  yield ["scroll-timeline-name", name] as const;
+  yield ["scroll-timeline-axis", axis] as const;
 };
 
 /**
@@ -842,6 +798,38 @@ const expandGrid = function* (value: CssNode) {
   yield ["grid-auto-columns", autoColumns] as const;
 };
 
+const expandWhiteSpace = function* (value: CssNode) {
+  const collapseKeyword = createIdentifier("collapse");
+  const preserveKeyword = createIdentifier("preserve");
+  const wrapKeyword = createIdentifier("wrap");
+  const nowrapKeyword = createIdentifier("nowrap");
+  let collapse = collapseKeyword;
+  let wrapMode = wrapKeyword;
+  [collapse = collapseKeyword, wrapMode = wrapKeyword] = parseUnordered(
+    [
+      // <'white-space-collapse'> is not supported by csstree
+      "collapse | preserve | preserve-breaks | preserve-spaces | break-spaces",
+      // <'text-wrap-mode'> is not supported by csstree
+      "wrap | nowrap",
+    ],
+    value
+  );
+  if (lexer.match("normal", value).matched) {
+    [collapse, wrapMode] = [collapseKeyword, wrapKeyword];
+  }
+  if (lexer.match("pre", value).matched) {
+    [collapse, wrapMode] = [preserveKeyword, nowrapKeyword];
+  }
+  if (lexer.match("pre-wrap", value).matched) {
+    [collapse, wrapMode] = [preserveKeyword, wrapKeyword];
+  }
+  if (lexer.match("pre-line", value).matched) {
+    [collapse, wrapMode] = [createIdentifier("preserve-breaks"), wrapKeyword];
+  }
+  yield ["white-space-collapse", collapse] as const;
+  yield ["text-wrap-mode", wrapMode] as const;
+};
+
 const expandShorthand = function* (property: string, value: CssNode) {
   switch (property) {
     case "font":
@@ -888,6 +876,21 @@ const expandShorthand = function* (property: string, value: CssNode) {
     case "border-image":
       yield* expandBorderImage(value);
       break;
+
+    case "outline": {
+      const [color, style, width] = parseUnordered(
+        [`<'outline-color'>`, `<'outline-style'>`, `<'outline-width'>`],
+        value
+      );
+      yield [`${property}-width`, width ?? createIdentifier("medium")] as const;
+      yield [`${property}-style`, style ?? createIdentifier("none")] as const;
+      yield [
+        `${property}-color`,
+        // auto is not actually supported but is described in the spec draft
+        color ?? createIdentifier("currentcolor"),
+      ] as const;
+      break;
+    }
 
     case "mask":
       yield* expandMask(value);
@@ -1078,6 +1081,51 @@ const expandShorthand = function* (property: string, value: CssNode) {
       const [x, y] = getValueList(value);
       yield ["overflow-x", x] as const;
       yield ["overflow-y", y ?? x] as const;
+      break;
+    }
+
+    case "container": {
+      const [name, type] = splitByOperator(value, "/");
+      yield ["container-name", name ?? createIdentifier("none")] as const;
+      yield ["container-type", type ?? createIdentifier("normal")] as const;
+      break;
+    }
+
+    case "contain-intrinsic-size": {
+      const [width, height] = parseUnordered(
+        [`<'contain-intrinsic-width'>`, `<'contain-intrinsic-height'>`],
+        value
+      );
+      yield [
+        "contain-intrinsic-width",
+        width ?? createIdentifier("none"),
+      ] as const;
+      yield [
+        "contain-intrinsic-height",
+        height ?? width ?? createIdentifier("none"),
+      ] as const;
+      break;
+    }
+
+    case "white-space":
+      yield* expandWhiteSpace(value);
+      break;
+
+    case "text-wrap": {
+      const [
+        mode = createIdentifier("wrap"),
+        style = createIdentifier("auto"),
+      ] = parseUnordered(
+        [
+          // <'text-wrap-mode'> is not supported by csstree
+          "wrap | nowrap",
+          // <'text-wrap-style'> is not supported by csstree
+          "auto | balance | stable | pretty",
+        ],
+        value
+      );
+      yield ["text-wrap-mode", mode] as const;
+      yield ["text-wrap-style", style] as const;
       break;
     }
 

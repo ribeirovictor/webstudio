@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeEach } from "@jest/globals";
 import { nanoid } from "nanoid";
 import {
-  type StyleRule,
+  type NestingRule,
   createRegularStyleSheet,
 } from "@webstudio-is/css-engine";
 import {
@@ -12,7 +12,13 @@ import {
 import { $, renderJsx } from "@webstudio-is/sdk/testing";
 import * as defaultMetas from "@webstudio-is/sdk-components-react-remix/metas";
 import { __testing__ } from "./plugin-webflow";
-import { $breakpoints, $registeredComponentMetas } from "../../nano-states";
+import {
+  $breakpoints,
+  $project,
+  $registeredComponentMetas,
+} from "../../nano-states";
+import invariant from "tiny-invariant";
+import { WfData } from "./schema";
 
 const { toWebstudioFragment } = __testing__;
 
@@ -62,26 +68,20 @@ const toCss = (fragment: WebstudioFragment) => {
   for (const breakpoint of fragment.breakpoints) {
     sheet.addMediaRule(breakpoint.id, breakpoint);
   }
-  const rulesMap = new Map<string, StyleRule>();
-  for (const style of fragment.styles) {
-    const token = fragment.styleSources.find(
-      (source) => source.id === style.styleSourceId
-    );
-    const name = token && "name" in token ? token.name : "Local";
-    const key = name + style.breakpointId;
-    let styleRule = rulesMap.get(key);
-    if (styleRule === undefined) {
-      styleRule = sheet.addStyleRule(
-        {
-          style: { [style.property]: style.value },
-          breakpoint: style.breakpointId,
-        },
-        name
-      );
-      rulesMap.set(key, styleRule);
-      continue;
-    }
-    styleRule.styleMap.set(style.property, style.value);
+  const ruleByStyleSourceId = new Map<string, NestingRule>();
+  for (const styleDecl of fragment.styleSources) {
+    const name = styleDecl.type === "token" ? styleDecl.name : "Local";
+    const rule = sheet.addNestingRule(name);
+    ruleByStyleSourceId.set(styleDecl.id, rule);
+  }
+  for (const styleDecl of fragment.styles) {
+    const rule = ruleByStyleSourceId.get(styleDecl.styleSourceId);
+    rule?.setDeclaration({
+      breakpoint: styleDecl.breakpointId,
+      selector: styleDecl.state ?? "",
+      property: styleDecl.property,
+      value: styleDecl.value,
+    });
   }
   return sheet.cssText;
 };
@@ -89,6 +89,16 @@ const toCss = (fragment: WebstudioFragment) => {
 beforeEach(() => {
   const defaultMetasMap = new Map(Object.entries(defaultMetas));
   $registeredComponentMetas.set(defaultMetasMap);
+  $project.set({
+    id: "test",
+    createdAt: "",
+    domain: "",
+    title: "",
+    userId: "",
+    isDeleted: false,
+    previewImageAsset: null,
+    marketplaceApprovalStatus: "PENDING",
+  });
 
   $breakpoints.set(
     new Map(
@@ -119,6 +129,7 @@ test("Heading", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -145,6 +156,7 @@ test("Link Block, Button, Text Link", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -193,6 +205,7 @@ test("List and ListItem", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -225,6 +238,7 @@ test("Paragraph", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -253,6 +267,7 @@ test("Text", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -281,6 +296,7 @@ test("Blockquote", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -306,6 +322,7 @@ test("Strong", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -331,6 +348,7 @@ test("Emphasized", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
   equalFragment(fragment, <$.Italic>Emphasis</$.Italic>);
@@ -355,6 +373,7 @@ test("Superscript", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -380,6 +399,7 @@ test("Subscript", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -400,6 +420,7 @@ test("Section", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -420,6 +441,7 @@ test("BlockContainer", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
   equalFragment(fragment, <$.Box />);
@@ -439,6 +461,7 @@ test("Block", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -459,6 +482,7 @@ test("V Flex", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
   equalFragment(fragment, <$.Box />);
@@ -478,6 +502,7 @@ test("H Flex", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
   equalFragment(fragment, <$.Box />);
@@ -514,6 +539,7 @@ test("Quick Stack", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
   equalFragment(
@@ -539,6 +565,7 @@ test("Grid", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -576,6 +603,7 @@ test("Columns", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -611,6 +639,7 @@ test("Image", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -640,6 +669,7 @@ test("HtmlEmbed", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
   equalFragment(fragment, <$.HtmlEmbed code="some html" clientOnly={true} />);
@@ -663,6 +693,7 @@ test("CodeBlock", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -1017,6 +1048,7 @@ test("RichText", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -1152,6 +1184,7 @@ test("Form", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -1193,6 +1226,7 @@ test("FormButton", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -1225,6 +1259,7 @@ test("FormTextInput", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -1267,6 +1302,7 @@ test("FormBlockLabel", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -1297,6 +1333,7 @@ test("FormTextarea", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -1337,6 +1374,7 @@ test("FormBlockLabel", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -1388,6 +1426,7 @@ test("FormCheckboxWrapper, FormCheckboxInput, FormInlineLabel", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -1452,6 +1491,7 @@ test("FormRadioWrapper, FormRadioInput, FormInlineLabel", async () => {
         },
       ],
       styles: [],
+      assets: [],
     },
   });
 
@@ -1463,6 +1503,107 @@ test("FormRadioWrapper, FormRadioInput, FormInlineLabel", async () => {
         Radio
       </$.Text>
     </$.Label>
+  );
+});
+
+test("FormSelect", async () => {
+  const fragment = await toWebstudioFragment({
+    type: "@webflow/XscpData",
+    payload: {
+      nodes: [
+        {
+          _id: "a68c34ca-e4c3-3dbc-0036-2554387bd7a4",
+          type: "FormSelect",
+          tag: "select",
+          classes: [],
+          children: [],
+          data: {
+            form: {
+              opts: [
+                {
+                  t: "Select one...",
+                  v: "",
+                },
+                {
+                  t: "First choice",
+                  v: "First",
+                },
+                {
+                  t: "Second choice",
+                  v: "Second",
+                },
+                {
+                  t: "Third choice",
+                  v: "Third",
+                },
+              ],
+            },
+            attr: {
+              id: "field-3",
+              name: "field-3",
+              required: false,
+              multiple: false,
+            },
+          },
+        },
+      ],
+      styles: [],
+      assets: [],
+    },
+  });
+
+  equalFragment(
+    fragment,
+    <$.Input id="field-3" name="field-3" required={false} multiple={false} />
+  );
+});
+
+test("Multiline text", async () => {
+  const fragment = await toWebstudioFragment({
+    type: "@webflow/XscpData",
+    payload: {
+      nodes: [
+        {
+          _id: "da7b8e40-a038-735c-bde8-0016079a5502",
+          type: "Block",
+          tag: "div",
+          classes: [],
+          children: [
+            "629fa602-de2f-b70b-ba5e-a74de823cfff",
+            "b6a2a455-8ece-d70b-c88b-2f7b7dd39445",
+            "49a4d697-0430-6739-9179-e75c1dbec765",
+          ],
+        },
+        {
+          _id: "629fa602-de2f-b70b-ba5e-a74de823cfff",
+          text: true,
+          v: "a",
+        },
+        {
+          _id: "b6a2a455-8ece-d70b-c88b-2f7b7dd39445",
+          type: "LineBreak",
+          tag: "br",
+          classes: [],
+          children: [],
+        },
+        {
+          _id: "49a4d697-0430-6739-9179-e75c1dbec765",
+          text: true,
+          v: "b",
+        },
+      ],
+      styles: [],
+      assets: [],
+    },
+  });
+
+  equalFragment(
+    fragment,
+    <$.Box>
+      {"a"}
+      {"\n"}
+      {"b"}
+    </$.Box>
   );
 });
 
@@ -1489,6 +1630,7 @@ describe("Custom attributes", () => {
           },
         ],
         styles: [],
+        assets: [],
       },
     });
     equalFragment(fragment, <$.Heading tag="h1" at="b" />);
@@ -1517,6 +1659,7 @@ describe("Styles", () => {
             styleLess: "color: hsla(0, 80.00%, 47.78%, 1.00);",
           },
         ],
+        assets: [],
       },
     });
 
@@ -1591,10 +1734,11 @@ describe("Styles", () => {
             type: "class",
             name: "is-secondary",
             comb: "&",
-            styleLess: "background-color: transparent; ",
+            styleLess: "background-color: transparent;",
             createdBy: "6075409192d886a671499223",
           },
         ],
+        assets: [],
       },
     });
 
@@ -1625,16 +1769,164 @@ describe("Styles", () => {
     expect(toCss(fragment)).toMatchInlineSnapshot(`
       "@media all {
         a {
-          background-color: rgba(0, 0, 0, 0);
-          outline-width: 0;
-          outline-style: initial;
-          outline-color: initial
+          background-color: rgba(0, 0, 0, 0)
+        }
+        a:active {
+          outline: 0 none currentColor
+        }
+        a:hover {
+          outline: 0 none currentColor
         }
         button {
           text-align: center
         }
         is-secondary {
           background-color: transparent
+        }
+      }"
+    `);
+  });
+
+  test("Webflow @variable syntax used by Relume (legacy?)", async () => {
+    const fragment = await toWebstudioFragment({
+      type: "@webflow/XscpData",
+      payload: {
+        nodes: [
+          {
+            _id: "5f7ab979-89b3-c705-6ab9-35f77dfb209f",
+            type: "Block",
+            tag: "div",
+            classes: ["194e7d07-469d-6ffa-3925-1f51bdad7e44"],
+            children: [],
+          },
+        ],
+        styles: [
+          {
+            _id: "194e7d07-469d-6ffa-3925-1f51bdad7e44",
+            type: "class",
+            name: "block",
+            styleLess: "color: @var_relume-variable-color-neutral-1",
+            children: [],
+          },
+        ],
+        assets: [],
+      },
+    });
+
+    expect(toCss(fragment)).toMatchInlineSnapshot(`
+      "@media all {
+        block {
+          color: unset
+        }
+      }"
+    `);
+  });
+
+  test("States", async () => {
+    const fragment = await toWebstudioFragment({
+      type: "@webflow/XscpData",
+      payload: {
+        nodes: [
+          {
+            _id: "5c66aeeb-941d-c52f-8e14-c54312878021",
+            type: "Link",
+            tag: "a",
+            classes: ["81cf331a-ed88-7a5f-3538-8915c7788aea"],
+            children: [],
+            data: {
+              link: {
+                url: "#",
+              },
+            },
+          },
+        ],
+        styles: [
+          {
+            _id: "81cf331a-ed88-7a5f-3538-8915c7788aea",
+            fake: false,
+            type: "class",
+            name: "x",
+            namespace: "",
+            comb: "",
+            styleLess: "transform: translate3d(7px, 74px, 16px);",
+            variants: {
+              main_hover: {
+                styleLess: "background-color: hsla(0, 85.19%, 42.12%, 1.00);",
+              },
+              tiny_focus: {
+                styleLess: "background-color: hsla(264, 73.75%, 38.37%, 1.00);",
+              },
+              tiny_active: {
+                styleLess: "background-color: hsla(0, 46.06%, 51.80%, 1.00);",
+              },
+              "tiny_focus-visible": {
+                styleLess: "background-color: hsla(264, 36.36%, 41.56%, 1.00);",
+              },
+              tiny_visited: {
+                styleLess: "background-color: hsla(0, 83.67%, 42.10%, 1.00);",
+              },
+              tiny_hover: {
+                styleLess: "background-color: hsla(0, 60.99%, 58.99%, 1.00);",
+              },
+            },
+          },
+        ],
+        assets: [],
+      },
+    });
+
+    expect(fragment.styleSources).toEqual([
+      {
+        type: "token",
+        id: expect.any(String),
+        name: "a",
+      },
+      {
+        type: "token",
+        id: expect.any(String),
+        name: "x",
+      },
+    ]);
+    expect(fragment.styleSourceSelections).toEqual([
+      {
+        instanceId: expect.any(String),
+        values: [expect.any(String), expect.any(String)],
+      },
+    ]);
+
+    expect(toCss(fragment)).toMatchInlineSnapshot(`
+      "@media all {
+        a {
+          background-color: rgba(0, 0, 0, 0)
+        }
+        a:active {
+          outline: 0 none currentColor
+        }
+        a:hover {
+          outline: 0 none currentColor
+        }
+        x {
+          transform: translate3d(7px,74px,16px)
+        }
+        x:hover {
+          background-color: rgba(199, 16, 16, 1)
+        }
+      }
+      @media all and (max-width: 479px) {
+        x:active {
+          background-color: rgba(189, 75, 75, 1)
+        }
+        x:focus {
+          background-color: rgba(83, 26, 170, 1)
+        }
+        x:focus-visible {
+          background-color: rgba(98, 67, 145, 1)
+        }
+        x:hover {
+          background-color: rgba(214, 87, 87, 1)
+        }
+        x:visited {
+          background-color: rgba(197, 18, 18, 1)
         }
       }"
     `);
@@ -1685,6 +1977,7 @@ test("Breakpoints", async () => {
           },
         },
       ],
+      assets: [],
     },
   });
 
@@ -1725,4 +2018,153 @@ test("Breakpoints", async () => {
       }
     }"
   `);
+});
+
+test("background images", async () => {
+  const input = WfData.parse({
+    type: "@webflow/XscpData",
+    payload: {
+      nodes: [
+        {
+          _id: "2e9842a4-ac18-9d21-894b-026c6eb20441",
+          type: "Block",
+          tag: "div",
+          classes: ["98133834-439c-9a8c-7e9f-c3186f2fa45f"],
+          children: [],
+          data: {
+            text: false,
+          },
+        },
+      ],
+      styles: [
+        {
+          _id: "98133834-439c-9a8c-7e9f-c3186f2fa45f",
+          fake: false,
+          type: "class",
+          name: "Div Block",
+          namespace: "",
+          comb: "",
+          styleLess:
+            "height: 400px; background-image: linear-gradient(180deg, hsla(0, 0.00%, 0.00%, 0.11), white), @img_667d0b7769e0cc3754b584f6, @img_667d0fe180995eadc1534a26, @img_example_bg; background-position: 0px 0px, 550px 0px, 0px 0px,0px 0px; background-size: auto, contain, auto, auto; background-repeat: repeat, no-repeat, repeat,repeat; background-attachment: scroll, fixed, scroll, fixed;",
+          variants: {},
+          children: [],
+          createdBy: "5b7c48038bdf56493c54eae4",
+          origin: null,
+          selector: null,
+        },
+      ],
+      assets: [
+        {
+          cdnUrl:
+            "https://uploads-ssl.webflow.com/667c32290bd6159c18dca9a0/667d0b7769e0cc3754b584f6_IMG_2882%20(1).png",
+          siteId: "667c32290bd6159c18dca9a0",
+          width: 800,
+          height: 600,
+          fileName: "IMG_2882 (1).png",
+          createdOn: "2024-06-27T06:49:27.100Z",
+          origFileName: "IMG_2882 (1).png",
+          fileHash: "36f49907757795f0a4ecfcfdfc483115",
+          variants: [
+            {
+              origFileName: "IMG_2882%20(1)-p-500.png",
+              fileName: "667d0b7769e0cc3754b584f6_IMG_2882%20(1)-p-500.png",
+              format: "png",
+              size: 192728,
+              width: 500,
+              quality: 100,
+              cdnUrl:
+                "https://daks2k3a4ib2z.cloudfront.net/667c32290bd6159c18dca9a0/667d0b7769e0cc3754b584f6_IMG_2882%20(1)-p-500.png",
+              s3Url:
+                "https://s3.amazonaws.com/webflow-prod-assets/667c32290bd6159c18dca9a0/667d0b7769e0cc3754b584f6_IMG_2882%20(1)-p-500.png",
+            },
+          ],
+          mimeType: "image/png",
+          s3Url:
+            "https://s3.amazonaws.com/webflow-prod-assets/667c32290bd6159c18dca9a0/667d0b7769e0cc3754b584f6_IMG_2882%20(1).png",
+          thumbUrl: "",
+          _id: "667d0b7769e0cc3754b584f6",
+          markedAsDeleted: false,
+          fileSize: 862053,
+        },
+        {
+          cdnUrl:
+            "https://uploads-ssl.webflow.com/667c32290bd6159c18dca9a0/667d0fe180995eadc1534a26_%D0%9F%D1%80%D0%B8%D0%B2%D0%B5%D1%82%20%D0%9C%D0%B8%D1%80%20%3A%20%252F%20.webp",
+          siteId: "667c32290bd6159c18dca9a0",
+          width: 1024,
+          height: 1024,
+          fileName: "Привет Мир : %2F .webp",
+          createdOn: "2024-06-27T07:08:17.010Z",
+          origFileName: "Привет Мир : %2F .webp",
+          fileHash: "d86e52a94c04120f455b276effa59046",
+          variants: [
+            {
+              origFileName:
+                "%D0%9F%D1%80%D0%B8%D0%B2%D0%B5%D1%82%20%D0%9C%D0%B8%D1%80%20%3A%20%252F%20-p-500.webp",
+              fileName:
+                "667d0fe180995eadc1534a26_%D0%9F%D1%80%D0%B8%D0%B2%D0%B5%D1%82%20%D0%9C%D0%B8%D1%80%20%3A%20%252F%20-p-500.webp",
+              format: "webp",
+              size: 26992,
+              width: 500,
+              quality: 100,
+              cdnUrl:
+                "https://daks2k3a4ib2z.cloudfront.net/667c32290bd6159c18dca9a0/667d0fe180995eadc1534a26_%D0%9F%D1%80%D0%B8%D0%B2%D0%B5%D1%82%20%D0%9C%D0%B8%D1%80%20%3A%20%252F%20-p-500.webp",
+              s3Url:
+                "https://s3.amazonaws.com/webflow-prod-assets/667c32290bd6159c18dca9a0/667d0fe180995eadc1534a26_%D0%9F%D1%80%D0%B8%D0%B2%D0%B5%D1%82%20%D0%9C%D0%B8%D1%80%20%3A%20%252F%20-p-500.webp",
+            },
+            {
+              origFileName:
+                "%D0%9F%D1%80%D0%B8%D0%B2%D0%B5%D1%82%20%D0%9C%D0%B8%D1%80%20%3A%20%252F%20-p-800.webp",
+              fileName:
+                "667d0fe180995eadc1534a26_%D0%9F%D1%80%D0%B8%D0%B2%D0%B5%D1%82%20%D0%9C%D0%B8%D1%80%20%3A%20%252F%20-p-800.webp",
+              format: "webp",
+              size: 45964,
+              width: 800,
+              quality: 100,
+              cdnUrl:
+                "https://daks2k3a4ib2z.cloudfront.net/667c32290bd6159c18dca9a0/667d0fe180995eadc1534a26_%D0%9F%D1%80%D0%B8%D0%B2%D0%B5%D1%82%20%D0%9C%D0%B8%D1%80%20%3A%20%252F%20-p-800.webp",
+              s3Url:
+                "https://s3.amazonaws.com/webflow-prod-assets/667c32290bd6159c18dca9a0/667d0fe180995eadc1534a26_%D0%9F%D1%80%D0%B8%D0%B2%D0%B5%D1%82%20%D0%9C%D0%B8%D1%80%20%3A%20%252F%20-p-800.webp",
+            },
+          ],
+          mimeType: "image/webp",
+          s3Url:
+            "https://s3.amazonaws.com/webflow-prod-assets/667c32290bd6159c18dca9a0/667d0fe180995eadc1534a26_%D0%9F%D1%80%D0%B8%D0%B2%D0%B5%D1%82%20%D0%9C%D0%B8%D1%80%20%3A%20%252F%20.webp",
+          thumbUrl: "",
+          _id: "667d0fe180995eadc1534a26",
+          markedAsDeleted: false,
+          fileSize: 191270,
+        },
+      ],
+    },
+  });
+
+  const fragment = await toWebstudioFragment(input);
+
+  const bgStyle = fragment.styles.find(
+    (style) => style.property === "backgroundImage"
+  );
+  //
+
+  expect(bgStyle).not.toBeNull();
+  expect(bgStyle?.value.type).toEqual("layers");
+
+  const layers = bgStyle?.value;
+
+  invariant(layers?.type === "layers");
+
+  const imgA = layers.value[1];
+  const imgB = layers.value[2];
+  const noneLayer = layers.value[3];
+
+  invariant(imgA.type === "image");
+  invariant(imgA.value.type === "url");
+  invariant(imgB.type === "image");
+  invariant(imgB.value.type === "url");
+
+  expect(imgA.value.url).toEqual(input.payload.assets[0].s3Url);
+  expect(imgB.value.url).toEqual(input.payload.assets[1].s3Url);
+
+  expect(noneLayer.type).toEqual("keyword");
+  invariant(noneLayer.type === "keyword");
+  expect(noneLayer.value).toEqual("none");
 });
